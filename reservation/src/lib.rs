@@ -1,14 +1,39 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use abi::ReservationQuery;
+use async_trait::async_trait;
+use error::ReservationError;
+use sqlx::PgPool;
+
+mod error;
+mod manager;
+
+pub type ReservationId = String;
+pub type UserId = String;
+pub type ResourceId = String;
+
+#[derive(Debug)]
+pub struct ReservationManager{
+    pool: PgPool
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+#[async_trait]
+pub trait Rsvp {
+    /// make a reservation
+    async fn reserve(&self, rsvp: abi::Reservation) -> Result<abi::Reservation, ReservationError>;
+    /// change reservation status(if current status is pending , change it to confirmed)
+    async fn change_status(&self, id: ReservationId) -> Result<abi::Reservation, ReservationError>;
+    /// update note
+    async fn update_note(
+        &self,
+        id: ReservationId,
+        note: String,
+    ) -> Result<abi::Reservation, ReservationError>;
+    /// delete reservation
+    async fn delete(&self, id: ReservationId) -> Result<(), ReservationError>;
+    /// get reservation by id
+    async fn get(&self, id: ReservationId) -> Result<abi::Reservation, ReservationError>;
+    /// query reservations
+    async fn query(
+        &self,
+        query: ReservationQuery,
+    ) -> Result<Vec<abi::Reservation>, ReservationError>;
 }

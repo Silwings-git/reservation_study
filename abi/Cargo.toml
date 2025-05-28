@@ -8,6 +8,7 @@ chrono = { version = "0.4.41", features = ["serde"] }
 prost = "0.13.5"
 prost-types = "0.13.5"
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
+thiserror = "2.0.12"
 tonic = { version = "0.13.1", features = ["gzip"] }
 
 [build-dependencies]

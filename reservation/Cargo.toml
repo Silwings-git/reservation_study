@@ -8,4 +8,7 @@ abi = { version = "0.1.0", path = "../abi" }
 async-trait = "0.1.88"
 chrono = { version = "0.4.41", features = ["serde"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
-thiserror = "2.0.12"
+tokio = { version = "1.45.1", features = ["full"] }
+
+[dev-dependencies]
+sqlx-db-tester = "0.6.0"

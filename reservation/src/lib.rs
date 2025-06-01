@@ -1,13 +1,10 @@
 use abi::Error;
+use abi::ReservationId;
 use abi::ReservationQuery;
 use async_trait::async_trait;
 use sqlx::PgPool;
 
 mod manager;
-
-pub type ReservationId = String;
-pub type UserId = String;
-pub type ResourceId = String;
 
 #[derive(Debug)]
 pub struct ReservationManager {

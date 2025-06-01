@@ -1,8 +1,13 @@
+use std::ops::Bound;
+
 use chrono::{DateTime, FixedOffset, Utc};
-use sqlx::postgres::types::PgRange;
+use sqlx::{
+    FromRow, Row,
+    postgres::{PgRow, types::PgRange},
+};
 
 use crate::{
-    Error, Reservation, ReservationStatus,
+    Error, Reservation, ReservationStatus, RsvpStatus,
     utils::{convert_to_timestamp, convert_to_utc_time},
 };
 
@@ -52,5 +57,45 @@ impl Reservation {
         let start = convert_to_utc_time(self.start.unwrap());
         let end = convert_to_utc_time(self.end.unwrap());
         (start..end).into()
+    }
+}
+
+impl FromRow<'_, sqlx::postgres::PgRow> for Reservation {
+    fn from_row(row: &PgRow) -> Result<Self, sqlx::Error> {
+        let id: i64 = row.get("id");
+        let timaspan: PgRange<DateTime<Utc>> = row.try_get("timespan")?;
+
+        let window = NaiveRange::from(timaspan);
+
+        let status: RsvpStatus = row.get("status");
+
+        Ok(Reservation {
+            id,
+            user_id: row.get("user_id"),
+            status: ReservationStatus::from(status) as i32,
+            resource_id: row.get("resource_id"),
+            start: window.start.map(convert_to_timestamp),
+            end: window.end.map(convert_to_timestamp),
+            note: row.get("note"),
+        })
+    }
+}
+
+struct NaiveRange<T> {
+    start: Option<T>,
+    end: Option<T>,
+}
+
+impl<T> From<PgRange<T>> for NaiveRange<T> {
+    fn from(value: PgRange<T>) -> Self {
+        let convert = |b: Bound<T>| match b {
+            Bound::Included(v) | Bound::Excluded(v) => Some(v),
+            _ => None,
+        };
+
+        let start = convert(value.start);
+        let end = convert(value.end);
+
+        NaiveRange { start, end }
     }
 }

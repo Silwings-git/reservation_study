@@ -1,5 +1,5 @@
 use crate::{ReservationId, ReservationManager, Rsvp};
-use abi::{Error, ReservationQuery};
+use abi::{Error, ReservationQuery, Validator};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::Row;
@@ -31,24 +31,49 @@ impl Rsvp for ReservationManager {
         Ok(rsvp)
     }
 
-    async fn change_status(&self, _id: ReservationId) -> Result<abi::Reservation, Error> {
-        todo!()
+    async fn change_status(&self, id: ReservationId) -> Result<abi::Reservation, Error> {
+        id.validate()?;
+        // if current status is pending, change it to confirmed, otherwise do nothing
+        let rsvp = sqlx::query_as(
+            "UPDATE rsvp.reservations SET status = 'confirmed' WHERE id = $1 AND status = 'pending' RETURNING *",
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(rsvp)
     }
 
     async fn update_note(
         &self,
-        _id: ReservationId,
-        _note: String,
+        id: ReservationId,
+        note: String,
     ) -> Result<abi::Reservation, Error> {
-        todo!()
+        id.validate()?;
+        let rsvp =
+            sqlx::query_as("UPDATE rsvp.reservations SET note = $1 WHERE id = $2 RETURNING *")
+                .bind(note)
+                .bind(id)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(rsvp)
     }
 
-    async fn delete(&self, _id: ReservationId) -> Result<(), Error> {
-        todo!()
+    async fn delete(&self, id: ReservationId) -> Result<(), Error> {
+        id.validate()?;
+        sqlx::query("DELETE FROM rsvp.reservations WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
-    async fn get(&self, _id: ReservationId) -> Result<abi::Reservation, Error> {
-        todo!()
+    async fn get(&self, id: ReservationId) -> Result<abi::Reservation, Error> {
+        id.validate()?;
+        let rsvp = sqlx::query_as("SELECT * FROM rsvp.reservations WHERE id = $1")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(rsvp)
     }
 
     async fn query(&self, _query: ReservationQuery) -> Result<Vec<abi::Reservation>, Error> {
@@ -68,7 +93,7 @@ mod tests {
 
     #[tokio::test]
     async fn reserve_should_work_for_valid_window() {
-        let tdb = get_tdb();
+        let tdb: TestPg = get_tdb();
         let pool = tdb.get_pool().await;
         let (rsvp, _manager) = make_silwings_reservation(pool).await;
         println!("rsvp: {rsvp:?}");
@@ -120,6 +145,60 @@ mod tests {
         } else {
             assert!(false);
         }
+    }
+
+    #[tokio::test]
+    async fn reserve_change_status_should_work() {
+        let tdb = get_tdb();
+        let pool = tdb.get_pool().await;
+        let (rsvp, manager) = make_silwings_reservation(pool).await;
+
+        let rsvp = manager.change_status(rsvp.id).await.unwrap();
+        assert_eq!(rsvp.status, abi::ReservationStatus::Confirmed as i32);
+    }
+
+    #[tokio::test]
+    async fn reserve_change_status_not_pending_should_do_nothging() {
+        let tdb = get_tdb();
+        let pool = tdb.get_pool().await;
+        let (rsvp, manager) = make_silwings_reservation(pool).await;
+
+        let rsvp = manager.change_status(rsvp.id).await.unwrap();
+
+        // change status again should do nothing
+        let ret = manager.change_status(rsvp.id).await.unwrap_err();
+        assert_eq!(ret, abi::Error::NotFound);
+    }
+
+    #[tokio::test]
+    async fn update_note_should_work() {
+        let tdb = get_tdb();
+        let pool = tdb.get_pool().await;
+        let (rsvp, manager) = make_silwings_reservation(pool).await;
+        let rsvp = manager
+            .update_note(rsvp.id, "hello world".into())
+            .await
+            .unwrap();
+        assert_eq!(rsvp.note, "hello world");
+    }
+
+    #[tokio::test]
+    async fn get_reservation_should_work() {
+        let tdb = get_tdb();
+        let pool = tdb.get_pool().await;
+        let (rsvp, manager) = make_silwings_reservation(pool).await;
+        let rsvp1 = manager.get(rsvp.id).await.unwrap();
+        assert_eq!(rsvp, rsvp1);
+    }
+
+    #[tokio::test]
+    async fn delete_reservation_should_work() {
+        let tdb = get_tdb();
+        let pool = tdb.get_pool().await;
+        let (rsvp, manager) = make_silwings_reservation(pool).await;
+        manager.delete(rsvp.id).await.unwrap();
+        let rsvp1 = manager.get(rsvp.id).await.unwrap_err();
+        assert_eq!(rsvp1, abi::Error::NotFound);
     }
 
     async fn make_silwings_reservation(pool: PgPool) -> (Reservation, ReservationManager) {

@@ -61,7 +61,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use abi::Reservation;
+    use abi::{Reservation, ReservationConflictInfo};
+    use chrono::FixedOffset;
     use sqlx::PgPool;
     use sqlx_db_tester::TestPg;
 
@@ -96,8 +97,29 @@ mod tests {
         let manager = ReservationManager::new(pool.clone());
         let _rsvp1 = manager.reserve(rsvp1).await.unwrap();
         let err = manager.reserve(rsvp2).await.unwrap_err();
-        println!("{err:?}");
-        assert!(matches!(err, Error::ConflictReservation(_)))
+        let offset = FixedOffset::east_opt(8 * 3600).unwrap();
+        if let Error::ConflictReservation(ReservationConflictInfo::Parsed(info)) = err {
+            assert_eq!(info.new.rid, "ocean-view-room-713");
+            assert_eq!(
+                info.new.start.with_timezone(&offset).to_rfc3339(),
+                "2025-12-26T22:40:00+08:00"
+            );
+            assert_eq!(
+                info.new.end.with_timezone(&offset).to_rfc3339(),
+                "2025-12-30T12:00:00+08:00"
+            );
+            assert_eq!(info.old.rid, "ocean-view-room-713");
+            assert_eq!(
+                info.old.start.with_timezone(&offset).to_rfc3339(),
+                "2025-12-25T22:40:00+08:00"
+            );
+            assert_eq!(
+                info.old.end.with_timezone(&offset).to_rfc3339(),
+                "2025-12-28T12:00:00+08:00"
+            );
+        } else {
+            assert!(false);
+        }
     }
 
     async fn make_silwings_reservation(pool: PgPool) -> (Reservation, ReservationManager) {

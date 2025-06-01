@@ -1,5 +1,9 @@
+mod conflict;
+
 use sqlx::postgres::PgDatabaseError;
 use thiserror::Error;
+
+pub use conflict::{ReservationConflictInfo, ReservationWindow};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -15,8 +19,8 @@ pub enum Error {
     #[error("Database error")]
     DbError(sqlx::Error),
 
-    #[error("{0}")]
-    ConflictReservation(String),
+    #[error("Conflict reservation")]
+    ConflictReservation(ReservationConflictInfo),
 
     #[error("unknown error")]
     Unknown,
@@ -29,7 +33,7 @@ impl From<sqlx::Error> for Error {
                 let err: &PgDatabaseError = e.downcast_ref();
                 match (err.code(), err.schema(), err.table()) {
                     ("23P01", Some("rsvp"), Some("reservations")) => {
-                        Error::ConflictReservation(err.detail().unwrap().to_string())
+                        Error::ConflictReservation(err.detail().unwrap().parse().unwrap())
                     }
                     _ => Error::DbError(sqlx::Error::Database(e)),
                 }

@@ -15,7 +15,7 @@ pub struct ReservationConflict {
     pub old: ReservationWindow,
 }
 
-#[derive(Debug, Clone,PartialEq,Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReservationWindow {
     pub rid: String,
     pub start: DateTime<Utc>,

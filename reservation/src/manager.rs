@@ -1,9 +1,9 @@
-use crate::{ReservationId, ReservationManager, Rsvp};
-use abi::{Error, ReservationQuery, Validator};
+use crate::{QueryBuilderExt, ReservationId, ReservationManager, Rsvp};
+use abi::{Error, ReservationQuery, ReservationStatus, Validator};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::Row;
 use sqlx::postgres::types::PgRange;
+use sqlx::{QueryBuilder, Row};
 
 #[async_trait]
 impl Rsvp for ReservationManager {
@@ -76,8 +76,34 @@ impl Rsvp for ReservationManager {
         Ok(rsvp)
     }
 
-    async fn query(&self, _query: ReservationQuery) -> Result<Vec<abi::Reservation>, Error> {
-        todo!()
+    async fn query(&self, query: ReservationQuery) -> Result<Vec<abi::Reservation>, Error> {
+        let mut builder = QueryBuilder::new("SELECT * FROM rsvp.reservations WHERE true");
+        let rsvps = builder
+            .push_and_bind_if(
+                !query.resource_id.is_empty(),
+                " AND resource_id = ",
+                &query.resource_id,
+            )
+            .push_and_bind_if(!query.user_id.is_empty(), " AND user_id = ", &query.user_id)
+            .push_and_bind_if_with(
+                !matches!(query.status(), ReservationStatus::Unknown),
+                " AND status = ",
+                || query.status().to_string(),
+            )
+            .push("::rsvp.reservation_status")
+            .push(format!(
+                " AND tstzrange('{}','{}') @> timespan ",
+                query.pg_start_time_string(),
+                query.pg_end_time_string()
+            ))
+            .push(format!(
+                " ORDER BY lower(timespan) {}",
+                if query.desc { "DESC" } else { "ASC" }
+            ))
+            .build_query_as()
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rsvps)
     }
 }
 
@@ -86,7 +112,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use abi::{Reservation, ReservationConflictInfo};
+    use abi::{Reservation, ReservationConflictInfo, ReservationQueryBuilder};
     use chrono::FixedOffset;
     use sqlx::PgPool;
     use sqlx_db_tester::TestPg;
@@ -199,6 +225,26 @@ mod tests {
         manager.delete(rsvp.id).await.unwrap();
         let rsvp1 = manager.get(rsvp.id).await.unwrap_err();
         assert_eq!(rsvp1, abi::Error::NotFound);
+    }
+
+    #[tokio::test]
+    async fn query_reservation_should_work() {
+        let tdb = get_tdb();
+        let pool = tdb.get_pool().await;
+        let (rsvp, manager) = make_silwings_reservation(pool).await;
+        let query = ReservationQueryBuilder::default()
+            .resource_id(rsvp.resource_id.clone())
+            .user_id(rsvp.user_id.clone())
+            .status(rsvp.status)
+            .start(rsvp.start.unwrap())
+            .end(rsvp.end.unwrap())
+            .desc(true)
+            .build()
+            .unwrap();
+        println!("查询条件: {query:?}");
+        let rsvps = manager.query(query).await.unwrap();
+        assert_eq!(rsvps.len(), 1);
+        assert_eq!(rsvps[0], rsvp);
     }
 
     async fn make_silwings_reservation(pool: PgPool) -> (Reservation, ReservationManager) {

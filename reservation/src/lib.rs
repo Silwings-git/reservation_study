@@ -4,7 +4,10 @@ use abi::ReservationQuery;
 use async_trait::async_trait;
 use sqlx::PgPool;
 
+mod db;
 mod manager;
+
+pub use db::*;
 
 #[derive(Debug)]
 pub struct ReservationManager {

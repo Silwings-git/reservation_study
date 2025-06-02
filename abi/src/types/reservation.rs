@@ -43,8 +43,8 @@ impl Reservation {
             return Err(Error::InvalidTime);
         }
 
-        let start = convert_to_utc_time(self.start.unwrap());
-        let end = convert_to_utc_time(self.end.unwrap());
+        let start = convert_to_utc_time(&self.start.unwrap());
+        let end = convert_to_utc_time(&self.end.unwrap());
 
         if start >= end {
             return Err(Error::InvalidTime);
@@ -54,8 +54,8 @@ impl Reservation {
     }
 
     pub fn get_timespan(&self) -> PgRange<DateTime<Utc>> {
-        let start = convert_to_utc_time(self.start.unwrap());
-        let end = convert_to_utc_time(self.end.unwrap());
+        let start = convert_to_utc_time(&self.start.unwrap());
+        let end = convert_to_utc_time(&self.end.unwrap());
         (start..end).into()
     }
 }

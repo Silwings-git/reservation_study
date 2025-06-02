@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use prost_types::Timestamp;
 
-pub fn convert_to_utc_time(ts: Timestamp) -> DateTime<Utc> {
+pub fn convert_to_utc_time(ts: &Timestamp) -> DateTime<Utc> {
     DateTime::<Utc>::from_timestamp(ts.seconds, ts.nanos as _).unwrap()
 }
 

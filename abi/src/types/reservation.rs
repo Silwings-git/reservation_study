@@ -7,7 +7,7 @@ use sqlx::{
 };
 
 use crate::{
-    Error, Reservation, ReservationStatus, RsvpStatus,
+    Error, Id, Reservation, ReservationStatus, RsvpStatus,
     utils::{convert_to_timestamp, convert_to_utc_time},
 };
 
@@ -97,5 +97,11 @@ impl<T> From<PgRange<T>> for NaiveRange<T> {
         let end = convert(value.end);
 
         NaiveRange { start, end }
+    }
+}
+
+impl Id for Reservation {
+    fn id(&self) -> i64 {
+        self.id
     }
 }

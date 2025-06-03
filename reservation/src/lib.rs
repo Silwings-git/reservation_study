@@ -1,4 +1,5 @@
 use abi::Error;
+use abi::FilterPager;
 use abi::ReservationId;
 use abi::ReservationQuery;
 use async_trait::async_trait;
@@ -35,4 +36,9 @@ pub trait Rsvp {
     async fn get(&self, id: ReservationId) -> Result<abi::Reservation, Error>;
     /// query reservations
     async fn query(&self, query: ReservationQuery) -> Result<Vec<abi::Reservation>, Error>;
+    /// filter reservations
+    async fn filter(
+        &self,
+        filter: abi::ReservationFilter,
+    ) -> Result<(FilterPager, Vec<abi::Reservation>), abi::Error>;
 }

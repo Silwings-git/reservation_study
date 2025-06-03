@@ -1,5 +1,5 @@
 use crate::{QueryBuilderExt, ReservationId, ReservationManager, Rsvp};
-use abi::{Error, ReservationQuery, ReservationStatus, Validator};
+use abi::{Error, FilterPager, ReservationQuery, ReservationStatus, Validator};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::postgres::types::PgRange;
@@ -79,12 +79,12 @@ impl Rsvp for ReservationManager {
     async fn query(&self, query: ReservationQuery) -> Result<Vec<abi::Reservation>, Error> {
         let mut builder = QueryBuilder::new("SELECT * FROM rsvp.reservations WHERE true");
         let rsvps = builder
-            .push_and_bind_if(
-                !query.resource_id.is_empty(),
-                " AND resource_id = ",
-                &query.resource_id,
-            )
-            .push_and_bind_if(!query.user_id.is_empty(), " AND user_id = ", &query.user_id)
+            .push_and_bind_if_with(!query.resource_id.is_empty(), " AND resource_id = ", || {
+                &query.resource_id
+            })
+            .push_and_bind_if_with(!query.user_id.is_empty(), " AND user_id = ", || {
+                &query.user_id
+            })
             .push_and_bind_if_with(
                 !matches!(query.status(), ReservationStatus::Unknown),
                 " AND status = ",
@@ -105,6 +105,52 @@ impl Rsvp for ReservationManager {
             .await?;
         Ok(rsvps)
     }
+
+    async fn filter(
+        &self,
+        filter: abi::ReservationFilter,
+    ) -> Result<(FilterPager, Vec<abi::Reservation>), abi::Error> {
+        let mut builder = QueryBuilder::new("SELECT * FROM rsvp.reservations WHERE true ");
+        let query = builder
+            .push_and_bind_if_with(
+                !filter.resource_id.is_empty(),
+                " AND resource_id = ",
+                || &filter.resource_id,
+            )
+            .push_and_bind_if_with(!filter.user_id.is_empty(), " AND user_id = ", || {
+                &filter.user_id
+            })
+            .push_and_bind_if_with(
+                !matches!(filter.status(), ReservationStatus::Unknown),
+                " AND status = ",
+                || filter.status().to_string(),
+            )
+            .push("::rsvp.reservation_status")
+            .push_and_bind_if_with(
+                filter.cursor.is_some(),
+                if filter.desc {
+                    " AND id <= "
+                } else {
+                    " AND id >= "
+                },
+                || filter.cursor.unwrap(),
+            )
+            .push(if filter.desc {
+                " ORDER BY id DESC "
+            } else {
+                " ORDER BY id ASC "
+            })
+            .push(" LIMIT ")
+            .push_bind(filter.page_size + 1 + if filter.cursor.is_some() { 1 } else { 0 })
+            .build_query_as::<abi::Reservation>();
+
+        let rsvps = query.fetch_all(&self.pool).await?;
+        let mut rsvps = rsvps.into_iter().collect();
+
+        let pager = filter.get_pager(&mut rsvps);
+
+        Ok((pager, rsvps.into_iter().collect()))
+    }
 }
 
 #[cfg(test)]
@@ -112,7 +158,9 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use abi::{Reservation, ReservationConflictInfo, ReservationQueryBuilder};
+    use abi::{
+        Reservation, ReservationConflictInfo, ReservationFilterBuilder, ReservationQueryBuilder,
+    };
     use chrono::FixedOffset;
     use sqlx::PgPool;
     use sqlx_db_tester::TestPg;
@@ -243,6 +291,25 @@ mod tests {
             .unwrap();
         println!("查询条件: {query:?}");
         let rsvps = manager.query(query).await.unwrap();
+        assert_eq!(rsvps.len(), 1);
+        assert_eq!(rsvps[0], rsvp);
+    }
+
+    #[tokio::test]
+    async fn filter_reservations_should_work() {
+        let tdb = get_tdb();
+        let pool = tdb.get_pool().await;
+        let (rsvp, manager) = make_silwings_reservation(pool).await;
+        let filter = ReservationFilterBuilder::default()
+            .user_id(rsvp.user_id.clone())
+            .status(rsvp.status)
+            .page_size(10)
+            .build()
+            .unwrap();
+
+        let (pager, rsvps) = manager.filter(filter).await.unwrap();
+        assert_eq!(pager.prev, None);
+        assert_eq!(pager.next, None);
         assert_eq!(rsvps.len(), 1);
         assert_eq!(rsvps[0], rsvp);
     }

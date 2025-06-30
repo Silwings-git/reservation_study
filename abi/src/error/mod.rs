@@ -28,6 +28,21 @@ pub enum Error {
     #[error("Conflict reservation")]
     ConflictReservation(ReservationConflictInfo),
 
+    #[error("Failed to read configuration file")]
+    ConfigReadError,
+
+    #[error("Failed to parse configuration file")]
+    ConfigParseError,
+
+    #[error("Invalid page size: {0}")]
+    InvalidPageSize(i64),
+
+    #[error("Invalid cursor: {0}")]
+    InvalidCursor(i64),
+
+    #[error("Invalid status: {0}")]
+    InvalidStatus(i32),
+
     #[error("unknown error")]
     Unknown,
 }
@@ -63,6 +78,30 @@ impl PartialEq for Error {
             (Self::InvalidResourceId(v1), Self::InvalidResourceId(v2)) => v1 == v2,
             (Self::Unknown, Self::Unknown) => true,
             _ => false,
+        }
+    }
+}
+
+impl From<Error> for tonic::Status {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::DbError(_) | Error::ConfigReadError | Error::ConfigParseError => {
+                tonic::Status::internal(e.to_string())
+            }
+            Error::InvalidTime
+            | Error::InvalidReservationId(_)
+            | Error::InvalidUserId(_)
+            | Error::InvalidResourceId(_)
+            | Error::InvalidPageSize(_)
+            | Error::InvalidCursor(_)
+            | Error::InvalidStatus(_) => tonic::Status::invalid_argument(e.to_string()),
+            Error::ConflictReservation(info) => {
+                tonic::Status::failed_precondition(format!("Conflict reservation: {:?}", info))
+            }
+            Error::NotFound => {
+                tonic::Status::not_found("No reservation found by the given condition")
+            }
+            Error::Unknown => tonic::Status::unknown("unknown error"),
         }
     }
 }

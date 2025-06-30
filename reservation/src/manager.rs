@@ -328,7 +328,7 @@ mod tests {
 
     fn get_tdb() -> TestPg {
         TestPg::new::<PathBuf>(
-            "postgres://silwings:root@localhost:5433/reservation".to_string(),
+            "postgres://postgres:root@localhost:5432/reservation".to_string(),
             "../migrations".into(),
         )
     }

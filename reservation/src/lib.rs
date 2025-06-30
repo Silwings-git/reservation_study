@@ -1,9 +1,11 @@
+use abi::DbConfig;
 use abi::Error;
 use abi::FilterPager;
 use abi::ReservationId;
 use abi::ReservationQuery;
 use async_trait::async_trait;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 
 mod db;
 mod manager;
@@ -18,6 +20,15 @@ pub struct ReservationManager {
 impl ReservationManager {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    pub async fn from_config(config: &DbConfig) -> Result<Self, abi::Error> {
+        let url = config.url();
+        let pool = PgPoolOptions::default()
+            .max_connections(config.max_connections)
+            .connect(&url)
+            .await?;
+        Ok(Self::new(pool))
     }
 }
 
